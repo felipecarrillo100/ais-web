@@ -179,8 +179,10 @@ export class AisReceiver extends EventEmitter {
             repeat: this.readUInt(bits, 6, 2),
             aisVersion: this.readUInt(bits, 38, 2),
             imo: this.readUInt(bits, 40, 30),
-            callsign: this.decodeText(bits, 70, 7),
-            name: this.decodeText(bits, 112, 20),
+            //callsign: this.decodeText(bits, 70, 42),
+           // name: this.decodeText(bits, 112, 120),
+            // destination: this.decodeText(bits, 302, 120),
+
             shipType: this.readUInt(bits, 232, 8),
             dimensionToBow: this.readUInt(bits, 240, 9),
             dimensionToStern: this.readUInt(bits, 249, 9),
@@ -191,8 +193,11 @@ export class AisReceiver extends EventEmitter {
             etaHour: this.readUInt(bits, 283, 5),
             etaMinute: this.readUInt(bits, 288, 6),
             draught: this.readUInt(bits, 294, 8) / 10,
-            destination: this.decodeText(bits, 302, 20),
             dteAvailable: this.readUInt(bits, 422, 1) === 1,
+
+            callsign: this.decodeText(bits, 70, 7),  // 7 chars, 42 bits total
+            name: this.decodeText(bits, 112, 20),    // 20 chars, 120 bits total
+            destination: this.decodeText(bits, 302, 20),
             channel,
         };
     }
@@ -210,15 +215,31 @@ export class AisReceiver extends EventEmitter {
         return -(parseInt(inverted, 2) + 1);
     }
 
+    /**
+     * Decode AIS 6-bit ASCII encoded text fields like callsign, name, destination.
+     * Each character is encoded in 6 bits.
+     * According to ITU-R M.1371, AIS uses a 6-bit ASCII where values 0-31 map to '@' + value,
+     * but with a specific character table, and trailing '@' are spaces.
+     */
     private decodeText(bits: string, start: number, chars: number): string {
+        const AIS_6BIT_TABLE = [
+            '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U',
+            'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', ' ',
+            '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+',
+            ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6',
+            '7', '8', '9', ':', ';', '<', '=', '>', '?'
+        ];
+
         let text = '';
         for (let i = 0; i < chars; i++) {
             const slice = bits.slice(start + i * 6, start + (i + 1) * 6);
             if (slice.length < 6) break;
-            let val = parseInt(slice, 2);
-            if (val < 32) text += String.fromCharCode(val + 64); // A-Z or space
-            else text += String.fromCharCode(val);
+            const val = parseInt(slice, 2);
+            text += AIS_6BIT_TABLE[val] || ' ';
         }
-        return text.trim().replace(/@/g, ' ').trim();
+        // Replace padding '@' with space and trim
+        return text.replace(/@+$/g, ' ').trim();
     }
+
 }

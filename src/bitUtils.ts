@@ -3,13 +3,26 @@
  * Utility functions for AIS bitfield encoding and decoding.
  */
 
+const AIS_6BIT_CHAR_CODES: { [char: string]: number } = {
+    '@': 0, 'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7, 'H': 8, 'I': 9,
+    'J': 10, 'K': 11, 'L': 12, 'M': 13, 'N': 14, 'O': 15, 'P': 16, 'Q': 17, 'R': 18,
+    'S': 19, 'T': 20, 'U': 21, 'V': 22, 'W': 23, 'X': 24, 'Y': 25, 'Z': 26,
+    '[': 27, '\\': 28, ']': 29, '^': 30, '_': 31,
+    ' ': 32,
+    '!': 33, '"': 34, '#': 35, '$': 36, '%': 37, '&': 38, '\'': 39, '(': 40, ')': 41, '*': 42,
+    '+': 43, ',': 44, '-': 45, '.': 46, '/': 47,
+    '0': 48, '1': 49, '2': 50, '3': 51, '4': 52, '5': 53, '6': 54, '7': 55, '8': 56, '9': 57,
+    ':': 58, ';': 59, '<': 60, '=': 61, '>': 62, '?': 63,
+};
+
 export function encodeBitField(fields: Array<{ value: any; length: number; signed?: boolean; ascii?: boolean }>): string {
     let bits = '';
     for (const field of fields) {
         if (field.ascii) {
+            // Ensure uppercase and pad with '@' (code 0) to required length in characters
             let str = String(field.value).toUpperCase().padEnd(field.length / 6, '@');
             for (const ch of str) {
-                const code = Math.max(0, Math.min(63, ch.charCodeAt(0) - 64));
+                const code = AIS_6BIT_CHAR_CODES[ch] ?? 0; // fallback to '@' if unknown
                 bits += code.toString(2).padStart(6, '0');
             }
         } else {
@@ -24,6 +37,7 @@ export function encodeBitField(fields: Array<{ value: any; length: number; signe
     }
     return bits;
 }
+
 
 export function to6BitAscii(bits: string): string {
     const chunks = bits.match(/.{1,6}/g) || [];
