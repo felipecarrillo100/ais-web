@@ -3,17 +3,21 @@ import { EventEmitter } from 'events';
 
 export interface PositionMessage {
     type: 1 | 2 | 3;
+    channel: string;
+    repeat: number;
     mmsi: number;
     navStatus: number;
-    rot: number;
-    sog: number;
+    rateOfTurn: number;
+    speedOverGround: number;
     accuracy: boolean;
     lon: number;
     lat: number;
-    cog: number;
+    courseOverGround: number;
     heading: number;
-    timestamp: number;
-    channel: string;
+    utcSecond: number;
+    specialManoeuvre: number;
+    raim: boolean;
+    radio: number;
 }
 
 export interface StaticVoyageMessage {
@@ -35,7 +39,7 @@ export interface StaticVoyageMessage {
     etaMinute: number;
     draught: number;
     destination: string;
-    dte: number;
+    dteAvailable: boolean;
     channel: string;
 }
 
@@ -55,7 +59,9 @@ export class AisReceiver extends EventEmitter {
     private static MULTIPART_TIMEOUT_MS = 30000;
 
     public onMessage(sentence: string) {
-        const match = sentence.match(/^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i);
+        const match = sentence.match(
+            /^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i
+        );
         if (!match) return;
 
         const [, , totalStr, partStr, seqId, channel, payload, fillBitsStr] = match;
@@ -78,7 +84,10 @@ export class AisReceiver extends EventEmitter {
                 total,
                 receivedParts: new Map(),
                 fillBits,
-                timer: setTimeout(() => this.multipartBuffers.delete(key), AisReceiver.MULTIPART_TIMEOUT_MS),
+                timer: setTimeout(
+                    () => this.multipartBuffers.delete(key),
+                    AisReceiver.MULTIPART_TIMEOUT_MS
+                ),
             };
             this.multipartBuffers.set(key, entry);
         }
@@ -130,25 +139,38 @@ export class AisReceiver extends EventEmitter {
         return fillBits > 0 ? bits.slice(0, -fillBits) : bits;
     }
 
-    private decodePosition(bits: string, type: 1 | 2 | 3, mmsi: number, channel: string): PositionMessage | null {
+    private decodePosition(
+        bits: string,
+        type: 1 | 2 | 3,
+        mmsi: number,
+        channel: string
+    ): PositionMessage | null {
         if (bits.length < 168) return null;
         return {
             type,
+            channel,
+            repeat: this.readUInt(bits, 6, 2),
             mmsi,
             navStatus: this.readUInt(bits, 38, 4),
-            rot: this.readInt(bits, 42, 8),
-            sog: this.readUInt(bits, 50, 10) / 10,
+            rateOfTurn: this.readInt(bits, 42, 8),
+            speedOverGround: this.readUInt(bits, 50, 10) / 10,
             accuracy: this.readUInt(bits, 60, 1) === 1,
             lon: this.readInt(bits, 61, 28) / 600000,
             lat: this.readInt(bits, 89, 27) / 600000,
-            cog: this.readUInt(bits, 116, 12) / 10,
+            courseOverGround: this.readUInt(bits, 116, 12) / 10,
             heading: this.readUInt(bits, 128, 9),
-            timestamp: this.readUInt(bits, 137, 6),
-            channel,
+            utcSecond: this.readUInt(bits, 137, 6),
+            specialManoeuvre: this.readUInt(bits, 143, 2),
+            raim: this.readUInt(bits, 145, 1) === 1,
+            radio: this.readUInt(bits, 146, 19),
         };
     }
 
-    private decodeType5(bits: string, mmsi: number, channel: string): StaticVoyageMessage & { repeat: number; aisVersion: number } | null {
+    private decodeType5(
+        bits: string,
+        mmsi: number,
+        channel: string
+    ): StaticVoyageMessage & { repeat: number; aisVersion: number } | null {
         if (bits.length < 424) return null;
 
         return {
@@ -170,7 +192,7 @@ export class AisReceiver extends EventEmitter {
             etaMinute: this.readUInt(bits, 288, 6),
             draught: this.readUInt(bits, 294, 8) / 10,
             destination: this.decodeText(bits, 302, 20),
-            dte: this.readUInt(bits, 422, 1),
+            dteAvailable: this.readUInt(bits, 422, 1) === 1,
             channel,
         };
     }
@@ -182,7 +204,9 @@ export class AisReceiver extends EventEmitter {
     private readInt(bits: string, start: number, length: number): number {
         const value = bits.slice(start, start + length);
         if (value[0] === '0') return parseInt(value, 2);
-        const inverted = [...value].map(b => (b === '0' ? '1' : '0')).join('');
+        const inverted = [...value]
+            .map((b) => (b === '0' ? '1' : '0'))
+            .join('');
         return -(parseInt(inverted, 2) + 1);
     }
 
@@ -195,6 +219,6 @@ export class AisReceiver extends EventEmitter {
             if (val < 32) text += String.fromCharCode(val + 64); // A-Z or space
             else text += String.fromCharCode(val);
         }
-        return text.trim().replace(/@/g, ' ');
+        return text.trim().replace(/@/g, ' ').trim();
     }
 }

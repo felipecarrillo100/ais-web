@@ -43,15 +43,17 @@ decoder.on('position', msg => {
     console.log('Decoded Position Message:', msg);
 });
 
-const staticMsgs = encodeStaticMessage(vesselStatic);
+const staticMsgs = [];
+staticMsgs.push(...encodeStaticMessage(vesselStatic));
 console.log(staticMsgs)
 
-const positionMsgs = encodePositionMessage(vesselPosition);
+const positionMsgs = [];
+ positionMsgs.push(...encodePositionMessage(vesselPosition));
 console.log(positionMsgs);
 
 const parts = [];
-parts.push('!AIVDM,2,1,7,A,57lof8`2F5HeT<eC:204e86373:222222222221@8HQC16Ch0:RA7kAD,0*28');
-parts.push('!AIVDM,2,2,7,A,PBp888888888880,2*79');
+ parts.push('!AIVDM,2,1,7,A,57lof8`2F5HeT<eC:204e86373:222222222221@8HQC16Ch0:RA7kAD,0*28');
+ parts.push('!AIVDM,2,2,7,A,PBp888888888880,2*79');
 
 
 [...staticMsgs, ...positionMsgs, ... parts].forEach(sentence => decoder.onMessage(sentence));
