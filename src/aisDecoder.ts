@@ -13,11 +13,14 @@ export interface PositionMessage {
     cog: number;
     heading: number;
     timestamp: number;
+    channel: string;
 }
 
 export interface StaticVoyageMessage {
     type: 5;
     mmsi: number;
+    repeat: number;
+    aisVersion: number;
     imo: number;
     callsign: string;
     name: string;
@@ -33,6 +36,7 @@ export interface StaticVoyageMessage {
     draught: number;
     destination: string;
     dte: number;
+    channel: string;
 }
 
 export type AisDecodedMessage = PositionMessage | StaticVoyageMessage;
@@ -54,7 +58,7 @@ export class AisReceiver extends EventEmitter {
         const match = sentence.match(/^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i);
         if (!match) return;
 
-        const [, , totalStr, partStr, seqId, , payload, fillBitsStr] = match;
+        const [, , totalStr, partStr, seqId, channel, payload, fillBitsStr] = match;
         if (!this.verifyChecksum(sentence)) return;
 
         const total = parseInt(totalStr, 10);
@@ -64,7 +68,7 @@ export class AisReceiver extends EventEmitter {
 
         if (total === 1) {
             const bits = this.payloadToBits(payload, fillBits);
-            this.processBits(bits);
+            this.processBits(bits, channel);
             return;
         }
 
@@ -91,18 +95,18 @@ export class AisReceiver extends EventEmitter {
                 fullPayload += partPayload;
             }
             const bits = this.payloadToBits(fullPayload, entry.fillBits);
-            this.processBits(bits);
+            this.processBits(bits, channel);
         }
     }
 
-    private processBits(bits: string) {
+    private processBits(bits: string, channel: string) {
         const type = this.readUInt(bits, 0, 6);
         const mmsi = this.readUInt(bits, 8, 30);
         if (type === 5) {
-            const msg = this.decodeType5(bits, mmsi);
+            const msg = this.decodeType5(bits, mmsi, channel);
             if (msg) this.emit('static', msg);
         } else if ([1, 2, 3].includes(type)) {
-            const msg = this.decodePosition(bits, type as 1 | 2 | 3, mmsi);
+            const msg = this.decodePosition(bits, type as 1 | 2 | 3, mmsi, channel);
             if (msg) this.emit('position', msg);
         }
     }
@@ -126,7 +130,7 @@ export class AisReceiver extends EventEmitter {
         return fillBits > 0 ? bits.slice(0, -fillBits) : bits;
     }
 
-    private decodePosition(bits: string, type: 1 | 2 | 3, mmsi: number): PositionMessage | null {
+    private decodePosition(bits: string, type: 1 | 2 | 3, mmsi: number, channel: string): PositionMessage | null {
         if (bits.length < 168) return null;
         return {
             type,
@@ -140,10 +144,11 @@ export class AisReceiver extends EventEmitter {
             cog: this.readUInt(bits, 116, 12) / 10,
             heading: this.readUInt(bits, 128, 9),
             timestamp: this.readUInt(bits, 137, 6),
+            channel,
         };
     }
 
-    private decodeType5(bits: string, mmsi: number): StaticVoyageMessage & { repeat: number; aisVersion: number } | null {
+    private decodeType5(bits: string, mmsi: number, channel: string): StaticVoyageMessage & { repeat: number; aisVersion: number } | null {
         if (bits.length < 424) return null;
 
         return {
@@ -159,16 +164,16 @@ export class AisReceiver extends EventEmitter {
             dimensionToStern: this.readUInt(bits, 249, 9),
             dimensionToPort: this.readUInt(bits, 258, 6),
             dimensionToStarboard: this.readUInt(bits, 264, 6),
-            etaMonth: this.readUInt(bits,274, 4),
-            etaDay:this.readUInt(bits,278, 5),
-            etaHour:this.readUInt(bits,283, 5),
-            etaMinute: this.readUInt(bits,288, 6),
+            etaMonth: this.readUInt(bits, 274, 4),
+            etaDay: this.readUInt(bits, 278, 5),
+            etaHour: this.readUInt(bits, 283, 5),
+            etaMinute: this.readUInt(bits, 288, 6),
             draught: this.readUInt(bits, 294, 8) / 10,
             destination: this.decodeText(bits, 302, 20),
             dte: this.readUInt(bits, 422, 1),
+            channel,
         };
     }
-
 
     private readUInt(bits: string, start: number, length: number): number {
         return parseInt(bits.slice(start, start + length), 2);
