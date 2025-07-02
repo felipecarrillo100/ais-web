@@ -1,0 +1,5 @@
+# Exclude all test-related files in the dist folder
+dist/**/*.test.*
+dist/**/*.spec.*
+dist/index.test.d.ts
+dist/index.test.js
