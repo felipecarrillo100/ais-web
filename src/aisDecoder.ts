@@ -64,16 +64,14 @@ export class AisReceiver extends EventEmitter {
      * @param enableChecksum Whether to verify the checksum (default: true)
      */
     public onMessage(sentence: string, enableChecksum = true) {
-        console.log(`Received sentence: ${sentence}`);
-
         const match = sentence.match(/^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i);
         if (!match) {
-            console.warn('Sentence does not match AIS NMEA format');
+            // Sentence does not match AIS NMEA format, ignore silently
             return;
         }
 
         if (enableChecksum && !this.verifyChecksum(sentence)) {
-            console.warn('Checksum failed for:', sentence);
+            // Checksum failed, ignore silently
             return;
         }
 
@@ -82,8 +80,6 @@ export class AisReceiver extends EventEmitter {
         const part = parseInt(partStr, 10);
         const fillBits = parseInt(fillBitsStr, 10);
         const key = seqId || 'noprefix';
-
-        console.log(`Message total: ${total}, part: ${part}, seqId: ${seqId}, channel: ${channel}`);
 
         if (total === 1) {
             // Single part message - decode immediately
@@ -100,7 +96,7 @@ export class AisReceiver extends EventEmitter {
                 receivedParts: new Map<number, string>(),
                 fillBits,
                 timer: setTimeout(() => {
-                    console.warn(`Multipart message timed out for key ${key}`);
+                    // Timeout: discard incomplete multipart message
                     this.multipartBuffers.delete(key);
                 }, AisReceiver.MULTIPART_TIMEOUT_MS),
             };
@@ -116,7 +112,7 @@ export class AisReceiver extends EventEmitter {
             for (let i = 1; i <= total; i++) {
                 const partPayload = entry.receivedParts.get(i);
                 if (!partPayload) {
-                    console.warn(`Missing part ${i} in multipart message for key ${key}`);
+                    // Missing part: silently discard
                     return;
                 }
                 fullPayload += partPayload;
@@ -129,7 +125,6 @@ export class AisReceiver extends EventEmitter {
     private verifyChecksum(sentence: string): boolean {
         const starIndex = sentence.indexOf('*');
         if (starIndex === -1) {
-            console.warn('No checksum found');
             return false;
         }
         // XOR of characters between '!' and '*', exclusive
@@ -140,11 +135,7 @@ export class AisReceiver extends EventEmitter {
         }
         const expected = sentence.slice(starIndex + 1).toUpperCase();
         const calculated = checksum.toString(16).toUpperCase().padStart(2, '0');
-        if (calculated !== expected) {
-            console.warn(`Checksum mismatch: calculated ${calculated}, expected ${expected}`);
-            return false;
-        }
-        return true;
+        return calculated === expected;
     }
 
     private payloadToBits(payload: string, fillBits: number): string {
@@ -160,23 +151,19 @@ export class AisReceiver extends EventEmitter {
     private processBits(bits: string, channel: string) {
         const type = this.readUInt(bits, 0, 6);
         const mmsi = this.readUInt(bits, 8, 30);
-        console.log(`Decoded message type: ${type}, MMSI: ${mmsi}`);
 
         if (type === 5) {
             const msg = this.decodeType5(bits, mmsi, channel);
             if (msg) {
-                console.log('Emitting static message:', msg);
                 this.emit('static', msg);
             }
         } else if ([1, 2, 3].includes(type)) {
             const msg = this.decodePosition(bits, type as 1 | 2 | 3, mmsi, channel);
             if (msg) {
-                console.log('Emitting position message:', msg);
                 this.emit('position', msg);
             }
-        } else {
-            console.warn(`Unsupported AIS message type: ${type}`);
         }
+        // Ignore unsupported message types silently
     }
 
     private decodePosition(
@@ -186,7 +173,6 @@ export class AisReceiver extends EventEmitter {
         channel: string
     ): PositionMessage | null {
         if (bits.length < 168) {
-            console.warn('Not enough bits for position message');
             return null;
         }
         return {
@@ -215,7 +201,6 @@ export class AisReceiver extends EventEmitter {
         channel: string
     ): StaticVoyageMessage & { repeat: number; aisVersion: number } | null {
         if (bits.length < 424) {
-            console.warn('Not enough bits for type 5 message');
             return null;
         }
 
