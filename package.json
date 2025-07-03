@@ -1,6 +1,6 @@
 {
   "name": "ais-web",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Compact AIS decoder in TypeScript for browser and web apps",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
