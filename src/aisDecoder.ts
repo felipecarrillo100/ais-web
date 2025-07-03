@@ -1,6 +1,8 @@
 // aisDecoder.ts
 import { EventEmitter } from 'events';
 
+// === Type Definitions ===
+
 export interface PositionMessage {
     type: 1 | 2 | 3;
     channel: string;
@@ -43,7 +45,37 @@ export interface StaticVoyageMessage {
     channel: string;
 }
 
-export type AisDecodedMessage = PositionMessage | StaticVoyageMessage;
+// === Event Map ===
+
+interface AisReceiverEvents {
+    position: PositionMessage;
+    static: StaticVoyageMessage;
+}
+
+// === TypedEventEmitter helper ===
+
+type EventNames<T> = keyof T & string;
+type EventListener<T, K extends EventNames<T>> = (payload: T[K]) => void;
+
+class TypedEventEmitter<T> extends EventEmitter {
+    on<K extends EventNames<T>>(eventName: K, listener: EventListener<T, K>): this {
+        return super.on(eventName, listener);
+    }
+
+    off<K extends EventNames<T>>(eventName: K, listener: EventListener<T, K>): this {
+        return super.off(eventName, listener);
+    }
+
+    once<K extends EventNames<T>>(eventName: K, listener: EventListener<T, K>): this {
+        return super.once(eventName, listener);
+    }
+
+    emit<K extends EventNames<T>>(eventName: K, payload: T[K]): boolean {
+        return super.emit(eventName, payload);
+    }
+}
+
+// === Main Decoder ===
 
 type MultipartBufferKey = string;
 
@@ -54,7 +86,7 @@ interface MultipartBufferEntry {
     timer: NodeJS.Timeout;
 }
 
-export class AisReceiver extends EventEmitter {
+export class AisReceiver extends TypedEventEmitter<AisReceiverEvents> {
     private multipartBuffers = new Map<MultipartBufferKey, MultipartBufferEntry>();
     private static MULTIPART_TIMEOUT_MS = 30000;
 
@@ -65,15 +97,9 @@ export class AisReceiver extends EventEmitter {
      */
     public onMessage(sentence: string, enableChecksum = true) {
         const match = sentence.match(/^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i);
-        if (!match) {
-            // Sentence does not match AIS NMEA format, ignore silently
-            return;
-        }
+        if (!match) return;
 
-        if (enableChecksum && !this.verifyChecksum(sentence)) {
-            // Checksum failed, ignore silently
-            return;
-        }
+        if (enableChecksum && !this.verifyChecksum(sentence)) return;
 
         const [, , totalStr, partStr, seqId, channel, payload, fillBitsStr] = match;
         const total = parseInt(totalStr, 10);
@@ -96,7 +122,6 @@ export class AisReceiver extends EventEmitter {
                 receivedParts: new Map<number, string>(),
                 fillBits,
                 timer: setTimeout(() => {
-                    // Timeout: discard incomplete multipart message
                     this.multipartBuffers.delete(key);
                 }, AisReceiver.MULTIPART_TIMEOUT_MS),
             };
@@ -111,10 +136,7 @@ export class AisReceiver extends EventEmitter {
             let fullPayload = '';
             for (let i = 1; i <= total; i++) {
                 const partPayload = entry.receivedParts.get(i);
-                if (!partPayload) {
-                    // Missing part: silently discard
-                    return;
-                }
+                if (!partPayload) return;
                 fullPayload += partPayload;
             }
             const bits = this.payloadToBits(fullPayload, entry.fillBits);
@@ -124,10 +146,7 @@ export class AisReceiver extends EventEmitter {
 
     private verifyChecksum(sentence: string): boolean {
         const starIndex = sentence.indexOf('*');
-        if (starIndex === -1) {
-            return false;
-        }
-        // XOR of characters between '!' and '*', exclusive
+        if (starIndex === -1) return false;
         const toCheck = sentence.slice(1, starIndex);
         let checksum = 0;
         for (let i = 0; i < toCheck.length; i++) {
@@ -154,27 +173,15 @@ export class AisReceiver extends EventEmitter {
 
         if (type === 5) {
             const msg = this.decodeType5(bits, mmsi, channel);
-            if (msg) {
-                this.emit('static', msg);
-            }
+            if (msg) this.emit('static', msg);
         } else if ([1, 2, 3].includes(type)) {
             const msg = this.decodePosition(bits, type as 1 | 2 | 3, mmsi, channel);
-            if (msg) {
-                this.emit('position', msg);
-            }
+            if (msg) this.emit('position', msg);
         }
-        // Ignore unsupported message types silently
     }
 
-    private decodePosition(
-        bits: string,
-        type: 1 | 2 | 3,
-        mmsi: number,
-        channel: string
-    ): PositionMessage | null {
-        if (bits.length < 168) {
-            return null;
-        }
+    private decodePosition(bits: string, type: 1 | 2 | 3, mmsi: number, channel: string): PositionMessage | null {
+        if (bits.length < 168) return null;
         return {
             type,
             channel,
@@ -195,15 +202,8 @@ export class AisReceiver extends EventEmitter {
         };
     }
 
-    private decodeType5(
-        bits: string,
-        mmsi: number,
-        channel: string
-    ): StaticVoyageMessage & { repeat: number; aisVersion: number } | null {
-        if (bits.length < 424) {
-            return null;
-        }
-
+    private decodeType5(bits: string, mmsi: number, channel: string): StaticVoyageMessage | null {
+        if (bits.length < 424) return null;
         return {
             type: 5,
             mmsi,
@@ -235,28 +235,23 @@ export class AisReceiver extends EventEmitter {
     private readInt(bits: string, start: number, length: number): number {
         const value = bits.slice(start, start + length);
         if (value[0] === '0') return parseInt(value, 2);
-        // Two's complement conversion for negative numbers
         const inverted = [...value].map((b) => (b === '0' ? '1' : '0')).join('');
         return -(parseInt(inverted, 2) + 1);
     }
 
     private decodeText(bits: string, start: number, chars: number): string {
-        const AIS_6BIT_TABLE = [
-            '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U',
-            'V', 'W', 'X', 'Y', 'Z', '[', '\\', ']', '^', '_', ' ',
-            '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+',
-            ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6',
-            '7', '8', '9', ':', ';', '<', '=', '>', '?'
-        ];
+        // Accurate AIS 6-bit ASCII table (as per ITU-R M.1371)
+        const table = '@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_ !"#$%&\'()*+,-./0123456789:;<=>?';
 
         let text = '';
         for (let i = 0; i < chars; i++) {
-            const slice = bits.slice(start + i * 6, start + (i + 1) * 6);
-            if (slice.length < 6) break;
-            const val = parseInt(slice, 2);
-            text += AIS_6BIT_TABLE[val] || ' ';
+            const bitIndex = start + i * 6;
+            if (bitIndex + 6 > bits.length) break;
+
+            const val = parseInt(bits.slice(bitIndex, bitIndex + 6), 2);
+            text += table[val] ?? ' ';
         }
-        return text.replace(/@+$/g, ' ').trim();
+
+        return text.replace(/@+$/, '').trim();
     }
 }

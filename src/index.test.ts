@@ -88,6 +88,49 @@ describe('AIS Encoder Integration with Encoder for Crosscheck', () => {
         }
     });
 
+    test('decodes encoded static message with dash', done => {
+        const vesselStatic: AisStaticMessage = {
+            mmsi: 123456789,
+            name: 'TESTSHIP',
+            callsign: 'C_LL-12',
+            destination: 'ROTTERDAM',
+            imo: 9876543,
+            shipType: 70,
+            dimensionToBow: 50,
+            dimensionToStern: 20,
+            dimensionToPort: 5,
+            dimensionToStarboard: 5,
+            epfd: 1,
+            etaMonth: 7,
+            etaDay: 1,
+            etaHour: 12,
+            etaMinute: 0,
+            draught: 5.2,
+            dteAvailable: true,
+            repeat: 0,
+            aisVersion: 0,
+            channel: 'A',
+        };
+
+        const staticMsgs = encodeStaticMessage(vesselStatic);
+
+        decoder.once('static', msg => {
+            try {
+                expect(msg.mmsi).toBe(vesselStatic.mmsi);
+                expect(msg.name).toBe(vesselStatic.name);
+                expect(msg.callsign).toBe(vesselStatic.callsign);
+                expect(msg.destination).toBe(vesselStatic.destination);
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+
+        for (const sentence of staticMsgs) {
+            decoder.onMessage(sentence);
+        }
+    });
+
     test('decodes encoded position message with 10-digit MMSI', done => {
         const vesselPosition: AisPositionMessage = {
             mmsi: 1000000000,  // 10-digit MMSI, max 30-bit value is ~1.07 billion, so this fits
