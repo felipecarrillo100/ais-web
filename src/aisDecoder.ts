@@ -100,12 +100,7 @@ export class AisReceiver extends TypedEventEmitter<AisReceiverEvents> {
         if (!match) return;
 
         if (enableChecksum && !this.verifyChecksum(sentence)) return;
-
-        const [, , totalStr, partStr, seqId, channel, payload, fillBitsStr] = match;
-        const total = parseInt(totalStr, 10);
-        const part = parseInt(partStr, 10);
-        const fillBits = parseInt(fillBitsStr, 10);
-        const key = seqId || 'noprefix';
+        const {channel, payload, total, part, fillBits, key} = this.extractRawData(match);
 
         if (total === 1) {
             // Single part message - decode immediately
@@ -142,6 +137,23 @@ export class AisReceiver extends TypedEventEmitter<AisReceiverEvents> {
             const bits = this.payloadToBits(fullPayload, entry.fillBits);
             this.processBits(bits, channel);
         }
+    }
+
+    public extractSentenceRawFields(sentence: string, enableChecksum = true) {
+        const match = sentence.match(/^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i);
+        if (!match) return;
+
+        if (enableChecksum && !this.verifyChecksum(sentence)) return;
+        return this.extractRawData(match);
+    }
+
+    private extractRawData(match: RegExpMatchArray) {
+        const [, , totalStr, partStr, seqId, channel, payload, fillBitsStr] = match;
+        const total = parseInt(totalStr, 10);
+        const part = parseInt(partStr, 10);
+        const fillBits = parseInt(fillBitsStr, 10);
+        const key = seqId || 'noprefix';
+        return {channel, payload, total, part, fillBits, key};
     }
 
     private verifyChecksum(sentence: string): boolean {
