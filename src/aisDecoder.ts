@@ -52,6 +52,30 @@ interface AisReceiverEvents {
     static: StaticVoyageMessage;
 }
 
+/**
+ * Events emitted by the AisReceiver:
+ *
+ * - 'position': Emitted when a Position Report message (AIS types 1, 2, or 3) is decoded.
+ *   Listener receives a `PositionMessage` object containing dynamic vessel position and navigation data.
+ *
+ * - 'static': Emitted when a Static and Voyage Related Data message (AIS type 5) is decoded.
+ *   Listener receives a `StaticVoyageMessage` object containing vessel identification and voyage details.
+ *
+ * Usage example:
+ * ```ts
+ * const receiver = new AisReceiver();
+ *
+ * receiver.on('position', (posMsg) => {
+ *   console.log('Position update:', posMsg);
+ * });
+ *
+ * receiver.on('static', (staticMsg) => {
+ *   console.log('Static vessel info:', staticMsg);
+ * });
+ * receiver.onMessage(aisSentence);
+ * ```
+ */
+
 // === TypedEventEmitter helper ===
 
 type EventNames<T> = keyof T & string;
@@ -91,7 +115,8 @@ export class AisReceiver extends TypedEventEmitter<AisReceiverEvents> {
     private static MULTIPART_TIMEOUT_MS = 30000;
 
     /**
-     * Process one AIS sentence.
+     * Process one AIS sentence. Pass your messages to this function, once the message is decoded, it triggers an event
+     * on('position') or on('static') depending on the type of sentence decoded.
      * @param sentence Raw NMEA AIS sentence, e.g. "!AIVDM,1,1,,A,...*hh"
      * @param enableChecksum Whether to verify the checksum (default: true)
      */
@@ -139,12 +164,42 @@ export class AisReceiver extends TypedEventEmitter<AisReceiverEvents> {
         }
     }
 
+    /**
+     * Extracts raw AIS sentence raw fields along with the decoded MMSI.
+     *
+     * Parses a raw AIS NMEA sentence (e.g. "!AIVDM,...") to extract:
+     * - total number of fragments,
+     * - current fragment number,
+     * - sequence ID,
+     * - radio channel,
+     * - payload string,
+     * - fill bits,
+     * and additionally decodes the MMSI number from the AIS payload.
+     *
+     * @param sentence - Raw AIS NMEA sentence string.
+     * @param enableChecksum - Whether to verify the NMEA checksum (default: true).
+     * @returns An object containing:
+     *   - channel: radio channel ('A' or 'B'),
+     *   - payload: AIS payload string,
+     *   - total: total number of sentence fragments,
+     *   - part: current fragment number,
+     *   - fillBits: number of fill bits in the payload,
+     *   - key: sequence ID for multipart messages (or 'noprefix'),
+     *   - mmsi: decoded MMSI number extracted from the payload,
+     * or undefined if the sentence is invalid or checksum verification fails.
+     */
     public extractSentenceRawFields(sentence: string, enableChecksum = true) {
         const match = sentence.match(/^!(AIVDM|AIVDO),(\d+),(\d+),([^,]*),([AB]),([^,]*),(\d+)\*([0-9A-F]{2})/i);
         if (!match) return;
 
         if (enableChecksum && !this.verifyChecksum(sentence)) return;
-        return this.extractRawData(match);
+        const rawData = this.extractRawData(match);
+
+        // Decode MMSI from payload
+        const bits = this.payloadToBits(rawData.payload, rawData.fillBits);
+        const mmsi = this.readUInt(bits, 8, 30);
+
+        return {...rawData, mmsi};
     }
 
     private extractRawData(match: RegExpMatchArray) {

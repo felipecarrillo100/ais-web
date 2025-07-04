@@ -1,6 +1,6 @@
 {
   "name": "ais-web",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Compact AIS decoder in TypeScript for browser and web apps",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/ais-web.git"
+    "url": "https://github.com/felipecarrillo100/ais-web.git"
   },
   "keywords": [
     "ais",

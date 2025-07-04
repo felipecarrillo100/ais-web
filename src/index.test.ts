@@ -88,7 +88,7 @@ describe('AIS Encoder Integration with Encoder for Crosscheck', () => {
         }
     });
 
-    test('decodes encoded static message with dash', done => {
+    test('decodes encoded static message with underscore and dash', done => {
         const vesselStatic: AisStaticMessage = {
             mmsi: 123456789,
             name: 'TESTSHIP',
