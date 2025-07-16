@@ -1,6 +1,6 @@
 {
   "name": "ais-web",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Compact AIS decoder in TypeScript for browser and web apps",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,8 +34,5 @@
     "rimraf": "^5.0.1",
     "ts-jest": "^29.1.0",
     "typescript": "^5.1.6"
-  },
-  "dependencies": {
-    "ais-stream-decoder": "^2.1.2"
   }
 }
