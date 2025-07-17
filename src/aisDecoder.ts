@@ -35,6 +35,7 @@ export interface StaticVoyageMessage {
     dimensionToStern: number;
     dimensionToPort: number;
     dimensionToStarboard: number;
+    epfd: number;
     etaMonth: number;
     etaDay: number;
     etaHour: number;
@@ -284,13 +285,14 @@ export class AisReceiver extends TypedEventEmitter<AisReceiverEvents> {
             dimensionToStern: this.readUInt(bits, 249, 9),
             dimensionToPort: this.readUInt(bits, 258, 6),
             dimensionToStarboard: this.readUInt(bits, 264, 6),
+            epfd: this.readUInt(bits, 270, 4), // ✅ ADD THIS LINE
             etaMonth: this.readUInt(bits, 274, 4),
             etaDay: this.readUInt(bits, 278, 5),
             etaHour: this.readUInt(bits, 283, 5),
             etaMinute: this.readUInt(bits, 288, 6),
             draught: this.readUInt(bits, 294, 8) / 10,
             destination: this.decodeText(bits, 302, 20),
-            dteAvailable: this.readUInt(bits, 422, 1) === 1,
+            dteAvailable: this.readUInt(bits, 422, 1) === 0,
             channel,
         };
     }

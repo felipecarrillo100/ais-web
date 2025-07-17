@@ -1,4 +1,4 @@
-import { AisReceiver } from './aisDecoder';
+import {AisReceiver, StaticVoyageMessage} from './aisDecoder';
 import {
     encodeStaticMessage,
     encodePositionMessage,
@@ -138,4 +138,85 @@ describe('AIS Decoder Tests', () => {
             }
         });
     });
+
+    describe('Static Messages from Strings', () => {
+        test('decodes encoded static message', (done) => {
+
+            const vesselStatic = {
+                mmsi: 123456789,
+                name: "TEST SHIP",
+                callsign: "CALL123",
+                destination: "PORT OF CALL"
+            }
+            const staticMsgs = [
+                "!AIVDM,2,1,2,A,51mg=5@2Fe3t<4hk7;=@E=B1<PU00000000000161@D577?os@D3lU83i`0h,0*0F",
+                "!AIVDM,2,2,2,A,C3000000000,6*52"
+            ];
+
+            decoder.once('static', (msg) => {
+                expect.assertions(4);
+                try {
+                    expect(msg.mmsi).toBe(vesselStatic.mmsi);
+                    expect(msg.name).toBe(vesselStatic.name);
+                    expect(msg.callsign).toBe(vesselStatic.callsign);
+                    expect(msg.destination).toBe(vesselStatic.destination);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+
+            for (const sentence of staticMsgs) {
+                decoder.onMessage(sentence);
+            }
+        });
+    });
+
+
+    test('encode and decode static message preserves epfd and dteAvailable', (done) => {
+        const originalMsg: AisStaticMessage = {
+            mmsi: 123456789,
+            imo: 9876543,
+            callsign: 'CALL123',
+            name: 'TEST VESSEL',
+            shipType: 70,
+            dimensionToBow: 10,
+            dimensionToStern: 20,
+            dimensionToPort: 5,
+            dimensionToStarboard: 5,
+            epfd: 7,
+            etaMonth: 12,
+            etaDay: 24,
+            etaHour: 18,
+            etaMinute: 30,
+            draught: 5.4,
+            destination: 'PORT NAME',
+            dteAvailable: true,
+            aisVersion: 1,
+            repeat: 0,
+            channel: 'A',
+        };
+
+        // Encode the message into AIS NMEA sentences (array of strings)
+        const sentences = encodeStaticMessage(originalMsg);
+
+        // Listen once for the decoded 'static' event
+        decoder.once('static', (decodedMsg: StaticVoyageMessage) => {
+            try {
+                expect(decodedMsg.mmsi).toBe(originalMsg.mmsi);
+                expect(decodedMsg.epfd).toBe(originalMsg.epfd);
+                expect(decodedMsg.dteAvailable).toBe(originalMsg.dteAvailable);
+                expect(decodedMsg.callsign.trim()).toBe(originalMsg.callsign);
+                expect(decodedMsg.name.trim()).toBe(originalMsg.name);
+                expect(decodedMsg.destination.trim()).toBe(originalMsg.destination);
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+
+        // Feed all encoded sentences to the decoder (simulate multipart handling)
+        sentences.forEach(sentence => decoder.onMessage(sentence));
+    });
+
 });
